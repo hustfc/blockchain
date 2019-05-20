@@ -2,14 +2,85 @@ import hashlib
 import json
 from time import time
 from uuid import uuid4
+from urllib.parse import urlparse
+import requests
 
 class Blockchain(object):
     def __init__(self):
         self.chain = []
         self.currentTransaction = []
+        self.nodes = set()
 
         #Create the genesis block
         self.newBlock(proof=100, previousHash=1)
+
+    def registerNode(self, address):
+        """
+        Add a new node to the list of nodes
+        :param address: <str> Address of node. Eg. 'http://192.168.0.5:5000'
+        :return: None
+        """
+        parsedUrl = urlparse(address)
+        self.nodes.add(parsedUrl.netloc)
+
+    #区块是否有效(是否被篡改、工作量证明对不对)
+    def validChain(self, chain):
+        """
+        Determine if a given blockchain is valid
+        :param chain: <list> A blockchain
+        :return: <bool> True if valid, False if not
+        """
+        previousBlock = chain[0]
+        currentIndex = 1
+
+        while currentIndex < len(chain):
+            block = chain[currentIndex]
+            print(f'{previousBlock}')
+            print(f'{block}')
+            print("\n-----------\n")
+            # Check that the hash of the block is correct
+            if block['previousHash'] != self.hash(previousBlock):
+                return False
+
+            # Check that the Proof of Work is correct
+            if not self.validProof(previousBlock['proof'], block['proof']):
+                return False
+
+            previousBlock = block
+            currentIndex += 1
+
+        return True
+
+    def resolveConflicts(self):
+        """
+        共识算法解决冲突
+        使用网络中最长的链.
+        :return: <bool> True 如果链被取代, 否则为False
+        """
+        neighbours = self.nodes
+        newChain = None
+
+        # We're only looking for chains longer than ours
+        maxLength = len(self.chain)
+
+        # Grab and verify the chains from all the nodes in our network
+        for node in neighbours:
+            response = requests.get(f'http://{node}/chain')
+
+            if response.status_code == 200:
+                length = response.json()['length']
+                chain = response.json()['chain']
+
+                # Check if the length is longer and the chain is valid
+                if length > maxLength and self.validChain(chain):
+                    maxLength = length
+                    newChain = chain
+
+        if newChain:
+            self.chain = newChain
+            return True
+
+        return False
 
     def newBlock(self, proof, previousHash = None):
         # Creates a new Block and adds it to the chain
