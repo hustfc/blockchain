@@ -1,7 +1,3 @@
-import hashlib
-import json
-from textwrap import dedent
-from time import time
 from uuid import uuid4
 
 from flask import Flask, jsonify, request
@@ -26,7 +22,7 @@ def mine():
     # We run the proof of work algorithm to get the next proof...
     lastBlock = blockchain.lastBlock
     lastProof = lastBlock['proof']
-    proof = blockchain.proofOfWork(lastBlock)
+    proof = blockchain.proofOfWork(lastProof)
 
     # 给工作量证明的节点提供奖励.
     # 发送者为 "0" 表明是新挖出的币
@@ -73,6 +69,35 @@ def fullChain():
         'chain' : blockchain.chain,
         'length' : len(blockchain.chain),
     }
+    return jsonify(response), 200
+
+@app.route('/nodes/register', methods=['POST'])
+def registerNodes():
+    values = request.get_json()
+    nodes = values.get('nodes')
+    if nodes is None:
+        return "Error: Please supply a valid list of nodes", 400
+    for node in nodes:
+        blockchain.registerNode(node)
+    response = {
+        'message': 'New nodes have been added',
+        'totalNodes': list(blockchain.nodes),
+    }
+    return jsonify(response), 201
+
+@app.route('/nodes/resolve', methods=['GET'])
+def consensus():
+    replaced = blockchain.resolveConflicts()
+    if replaced:
+        response = {
+            'message': 'Our chain was replaced',
+            'new_chain': blockchain.chain
+        }
+    else:
+        response = {
+            'message': 'Our chain is authoritative',
+            'chain': blockchain.chain
+        }
     return jsonify(response), 200
 
 if __name__ == '__main__':
